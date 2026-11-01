@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><script>
+// Opaque-origin iframe: learner workers have no access to the academy origin/storage.
+let active;
+addEventListener('message', async event => {
+ if(event.source!==parent || event.data?.type!=='run')return;
+ if(active)active();
+ const {source,payload,id}=event.data;
+ const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
+ let worker;
+ try { worker=new Worker(url); } catch(e) {
+   URL.revokeObjectURL(url);
+   parent.postMessage({type:'result',id,error:'Could not start the isolated worker: '+e.message},'*');
+   return;
+ }
+ let finished=false;
+ const stop=()=>{worker.terminate();URL.revokeObjectURL(url);clearTimeout(timer);};
+ const finish=result=>{if(finished)return;finished=true;stop();parent.postMessage({type:'result',id,...result},'*');};
+ const timer=setTimeout(()=>finish({error:'Execution stopped after 2 seconds. Check for an infinite loop.'}),2000);
+ active=()=>finish({error:'Execution stopped.'});
+ worker.onmessage=e=>finish(e.data);
+ worker.onerror=()=>finish({error:'Execution failed. Check your JavaScript syntax.'});
+ worker.postMessage(payload);
+});
+</script>
